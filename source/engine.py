@@ -2,6 +2,7 @@ from pytube import Playlist, YouTube, Channel  # type: ignore
 from pathlib import Path
 from dataclasses import dataclass
 from tqdm import tqdm
+from .util import ProgressDownload
 
 
 @dataclass
@@ -29,7 +30,9 @@ class Engine:
         for info in tqdm(self._videos):
             self._init_directory(info.dest_dir)
             yt = YouTube(info.url)
-            yt.streams.get_highest_resolution().download(output_path=info.dest_dir)
+            stream = yt.streams.get_highest_resolution()
+            ProgressDownload(yt, stream.filesize)
+            stream.download(output_path=info.dest_dir)
 
     def _init_directory(self, dir: Path) -> None:
         if not dir.exists():
