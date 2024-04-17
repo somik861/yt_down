@@ -1,0 +1,6 @@
+# python artifacts
+.mypy_cache
+__pycache__
+
+# default download folder
+yt_downloaded
