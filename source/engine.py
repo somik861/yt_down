@@ -1,12 +1,11 @@
 from pytube import Playlist, YouTube, Channel, Stream, StreamQuery  # type: ignore
 from pathlib import Path
 from dataclasses import dataclass
-from tqdm import tqdm
 from .util import DownloadCallbackWrapper
 import ffmpeg
 import shutil
 import sys
-from typing import Callable
+from typing import Callable, Generator
 
 
 @dataclass
@@ -17,11 +16,12 @@ class _VideoInfo:
 
 @dataclass
 class Callbacks:
-    # file size in bytes
+    # [file size in bytes]
     on_start: Callable[[int], None] = lambda x: None
     # [percentage 0 ... 1; speed in MB/s]
     on_progress: Callable[[float, float], None] = lambda x, y: None
-    on_complete: Callable[[], None] = lambda: None
+    # [path to downloaded file]
+    on_complete: Callable[[Path], None] = lambda x: None
 
 
 FFMPEG_PATH = Path(sys.argv[0]).parent/'external'/'ffmpeg.exe'
@@ -52,17 +52,20 @@ class Engine:
         for vid in Channel(url).video_urls:
             self.add_video(vid, dest_dir)
 
-    def download(self, cbs: Callbacks | None = None) -> None:
-        for info in tqdm(self._videos):
+    def video_count(self) -> int:
+        return len(self._videos)
+
+    def download(self, cbs: Callbacks | None = None) -> Generator[Path, None, None]:
+        for info in self._videos:
             self._init_directory(info.dest_dir)
             yt = YouTube(info.url)
             stream = self._get_highest_resolution(yt.streams)
             assert stream is not None, "Video stream not found"
 
             if stream.is_progressive:
-                self._download_stream(yt, stream, info.dest_dir, cbs)
+                yield self._download_stream(yt, stream, info.dest_dir, cbs)
             if stream.is_adaptive:
-                self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
+                yield self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
 
     def _init_directory(self, dir: Path) -> None:
         if not dir.exists():
@@ -82,6 +85,9 @@ class Engine:
         old_video_path = video_path = self._download_stream(
             yt, stream, dest_dir, cbs)
         dest_path = video_path.with_suffix('.mkv')
+        if dest_path.exists():
+            dest_path.unlink()
+
         video_path = video_path.with_stem('video')
         shutil.move(old_video_path, video_path)
 

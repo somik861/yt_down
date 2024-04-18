@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from source.engine import Engine, Callbacks
 from source.cli_util import ProgressDownload
+from tqdm import tqdm
 
 
 def main() -> int:
@@ -41,7 +42,8 @@ def main() -> int:
 
     cbs = Callbacks()
     ProgressDownload(cbs)
-    eng.download(cbs)
+    for _ in tqdm(eng.download(cbs), total=eng.video_count()):
+        pass
 
     return 0
 

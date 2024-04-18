@@ -1,4 +1,5 @@
 from .engine import Callbacks
+from pathlib import Path
 
 
 class ProgressDownload:
@@ -16,7 +17,7 @@ class ProgressDownload:
         self._clear_row()
         self._print_progress(pct * 100.0, speed)
 
-    def _on_complete_cb(self) -> None:
+    def _on_complete_cb(self, path: Path) -> None:
         self._clear_row()
 
     def _clear_row(self) -> None:

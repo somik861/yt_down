@@ -9,7 +9,7 @@ class DownloadCallbackWrapper:
         self._yt = yt.register_on_progress_callback(self._on_progress_cb)
         self._yt = yt.register_on_complete_callback(self._on_complete_cb)
         self._on_progress_cbs: list[Callable[[float, float], None]] = []
-        self._on_complete_cbs: list[Callable[[], None]] = []
+        self._on_complete_cbs: list[Callable[[Path], None]] = []
         self._total_size_b = self._delta_remaining_bytes = total_size_b
         self._delta_start = datetime.now()
 
@@ -17,7 +17,7 @@ class DownloadCallbackWrapper:
         """cb ([0...1, MB/s])"""
         self._on_progress_cbs.append(cb)
 
-    def register_on_complete_callback(self, cb: Callable[[], None]) -> None:
+    def register_on_complete_callback(self, cb: Callable[[Path], None]) -> None:
         self._on_complete_cbs.append(cb)
 
     def _on_progress_cb(self, stream: Stream, chunk: bytes, remaning_bytes: int) -> None:
@@ -33,4 +33,4 @@ class DownloadCallbackWrapper:
 
     def _on_complete_cb(self, stream: Stream, path: Path) -> None:
         for cb in self._on_complete_cbs:
-            cb()
+            cb(path)
