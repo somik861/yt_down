@@ -6,12 +6,20 @@ import ffmpeg
 import shutil
 import sys
 from typing import Callable, Generator
+import re
+
+ALLOWED_CHARS_REGEX = 'a-zA-Z0-9 _,.()'
+
+
+def _normalize(string: str) -> str:
+    return re.sub(f'[^{ALLOWED_CHARS_REGEX}]', lambda x: '_', string)
 
 
 @dataclass
 class _VideoInfo:
     url: str
     dest_dir: Path
+    prefix: str
 
 
 @dataclass
@@ -41,16 +49,34 @@ class Engine:
     def __init__(self) -> None:
         self._videos: list[_VideoInfo] = []
 
-    def add_video(self, url: str, dest_dir: Path) -> None:
-        self._videos.append(_VideoInfo(url=url, dest_dir=dest_dir))
+    def add_video(self, url: str, dest_dir: Path, *, prefix: str = '') -> None:
+        self._videos.append(_VideoInfo(url=url, dest_dir=dest_dir, prefix=prefix))
 
-    def add_playlist(self, url: str, dest_dir: Path) -> None:
-        for vid in Playlist(url).video_urls:
-            self.add_video(vid, dest_dir)
+    def add_playlist(self, url: str, dest_dir: Path, *, create_subdirectory: bool = False, number_entries: bool = False) -> None:
+        pl = Playlist(url)
+        if create_subdirectory:
+            dest_dir /= _normalize(pl.title)
 
-    def add_channel(self, url: str, dest_dir: Path) -> None:
-        for vid in Channel(url).video_urls:
-            self.add_video(vid, dest_dir)
+        digits = len(str(len(pl.video_urls) + 1))
+        for n, vid in enumerate(reversed(pl.video_urls), start=1):
+            prefix = ''
+            if number_entries:
+                prefix = f'{n:0>{digits}}_'
+            self.add_video(vid, dest_dir, prefix=prefix)
+
+    def add_channel(self, url: str, dest_dir: Path, *, create_subdirectory: bool = False,  number_entries: bool = False) -> None:
+        ch = Channel(url)
+        if create_subdirectory:
+            dest_dir /= _normalize(ch.channel_name)
+
+        digits = len(str(len(ch.video_urls) + 1))
+
+        for n, vid in enumerate(reversed(ch.video_urls), start=1):
+            prefix = ''
+            if number_entries:
+                prefix = f'{n:0>{digits}}_'
+
+            self.add_video(vid, dest_dir, prefix=prefix)
 
     def video_count(self) -> int:
         return len(self._videos)
@@ -63,9 +89,16 @@ class Engine:
             assert stream is not None, "Video stream not found"
 
             if stream.is_progressive:
-                yield self._download_stream(yt, stream, info.dest_dir, cbs)
+                file = self._download_stream(yt, stream, info.dest_dir, cbs)
             if stream.is_adaptive:
-                yield self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
+                file = self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
+
+            if info.prefix != '':
+                new_file = file.with_stem(info.prefix + file.stem)
+                shutil.move(file, new_file)
+                file = new_file
+
+            yield file
 
     def _init_directory(self, dir: Path) -> None:
         if not dir.exists():
@@ -79,6 +112,7 @@ class Engine:
             cbs.on_start(stream.filesize)
             wrapp.register_on_progress_callback(cbs.on_progress)
             wrapp.register_on_complete_callback(cbs.on_complete)
+
         return Path(stream.download(output_path=dest_dir))
 
     def _download_adaptive(self, yt: YouTube, stream: Stream, streams: StreamQuery, dest_dir: Path, cbs: Callbacks | None) -> Path:
@@ -111,7 +145,7 @@ class Engine:
 
         video_path.unlink()
         audio_path.unlink()
-        return video_path
+        return dest_path
 
     def _get_highest_bitrate_audio(self, query: StreamQuery) -> Stream | None:
         streams = sorted(

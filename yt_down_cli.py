@@ -8,37 +8,50 @@ from tqdm import tqdm
 
 def main() -> int:
     parser = ArgumentParser()
-    parser.add_argument('--video',
+    parser.add_argument('--videos',
                         type=str,
                         required=False,
                         metavar='URL',
-                        help='download video')
-    parser.add_argument('--playlist',
+                        nargs='*',
+                        help='download videos')
+    parser.add_argument('--playlists',
                         type=str,
                         required=False,
                         metavar='URL',
-                        help='download playlist')
-    parser.add_argument('--channel',
+                        nargs='*',
+                        help='download playlists')
+    parser.add_argument('--channels',
                         type=str,
                         required=False,
                         metavar='URL',
-                        help='download all videos from channel')
+                        nargs='*',
+                        help='download all videos from channels')
     parser.add_argument('--out',
                         type=Path,
                         default='yt_downloaded',
                         help='destination directory')
+    parser.add_argument('--disable_subdirs',
+                        action='store_true',
+                        help='Disable video sorting into subdirectories according to channel/playlist')
+
+    parser.add_argument('--disable_numbering',
+                        action='store_true',
+                        help='Disable numbering of videos from channel and playlist')
 
     args = parser.parse_args()
 
     eng = Engine()
-    if args.video:
-        eng.add_video(args.video, dest_dir=args.out)
+    if args.videos:
+        for video in args.videos:
+            eng.add_video(video, dest_dir=args.out)
 
-    if args.playlist:
-        eng.add_playlist(args.playlist, dest_dir=args.out)
+    if args.playlists:
+        for playlist in args.playlists:
+            eng.add_playlist(playlist, dest_dir=args.out, create_subdirectory=(not args.disable_subdirs), number_entries=(not args.disable_numbering))
 
-    if args.channel:
-        eng.add_playlist(args.channel, dest_dir=args.out)
+    if args.channels:
+        for channel in args.channels:
+            eng.add_playlist(channel, dest_dir=args.out, create_subdirectory=(not args.disable_subdirs), number_entries=(not args.disable_numbering))
 
     cbs = Callbacks()
     ProgressDownload(cbs)
