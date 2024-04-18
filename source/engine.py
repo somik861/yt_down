@@ -58,7 +58,7 @@ class Engine:
             dest_dir /= _normalize(pl.title)
 
         digits = len(str(len(pl.video_urls) + 1))
-        for n, vid in enumerate(reversed(pl.video_urls), start=1):
+        for n, vid in enumerate(pl.video_urls, start=1):
             prefix = ''
             if number_entries:
                 prefix = f'{n:0>{digits}}_'
@@ -71,7 +71,7 @@ class Engine:
 
         digits = len(str(len(ch.video_urls) + 1))
 
-        for n, vid in enumerate(reversed(ch.video_urls), start=1):
+        for n, vid in enumerate(ch.video_urls, start=1):
             prefix = ''
             if number_entries:
                 prefix = f'{n:0>{digits}}_'
