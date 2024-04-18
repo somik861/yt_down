@@ -1,16 +1,17 @@
 from argparse import ArgumentParser
 import sys
 from pathlib import Path
-from source.engine import Engine
+from source.engine import Engine, Callbacks
+from source.cli_util import ProgressDownload
 
 
 def main() -> int:
     parser = ArgumentParser()
     parser.add_argument('--video',
-                    type=str,
-                    required=False,
-                    metavar='URL',
-                    help='download video')
+                        type=str,
+                        required=False,
+                        metavar='URL',
+                        help='download video')
     parser.add_argument('--playlist',
                         type=str,
                         required=False,
@@ -38,9 +39,12 @@ def main() -> int:
     if args.channel:
         eng.add_playlist(args.channel, dest_dir=args.out)
 
-    eng.download()
+    cbs = Callbacks()
+    ProgressDownload(cbs)
+    eng.download(cbs)
 
     return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())

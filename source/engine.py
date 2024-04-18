@@ -2,9 +2,11 @@ from pytube import Playlist, YouTube, Channel, Stream, StreamQuery  # type: igno
 from pathlib import Path
 from dataclasses import dataclass
 from tqdm import tqdm
-from .util import ProgressDownload
+from .util import DownloadCallbackWrapper
 import ffmpeg
 import shutil
+import sys
+from typing import Callable
 
 
 @dataclass
@@ -12,6 +14,17 @@ class _VideoInfo:
     url: str
     dest_dir: Path
 
+
+@dataclass
+class Callbacks:
+    # file size in bytes
+    on_start: Callable[[int], None] = lambda x: None
+    # [percentage 0 ... 1; speed in MB/s]
+    on_progress: Callable[[float, float], None] = lambda x, y: None
+    on_complete: Callable[[], None] = lambda: None
+
+
+FFMPEG_PATH = Path(sys.argv[0]).parent/'external'/'ffmpeg.exe'
 
 SUPPORTED_VIDEO_RESOLUTIONS: list[str] = [
     '144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p'
@@ -39,7 +52,7 @@ class Engine:
         for vid in Channel(url).video_urls:
             self.add_video(vid, dest_dir)
 
-    def download(self) -> None:
+    def download(self, cbs: Callbacks | None = None) -> None:
         for info in tqdm(self._videos):
             self._init_directory(info.dest_dir)
             yt = YouTube(info.url)
@@ -47,9 +60,9 @@ class Engine:
             assert stream is not None, "Video stream not found"
 
             if stream.is_progressive:
-                self._download_stream(yt, stream, info.dest_dir)
+                self._download_stream(yt, stream, info.dest_dir, cbs)
             if stream.is_adaptive:
-                self._download_adaptive(yt, stream, yt.streams, info.dest_dir)
+                self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
 
     def _init_directory(self, dir: Path) -> None:
         if not dir.exists():
@@ -57,13 +70,17 @@ class Engine:
         if not dir.is_dir():
             raise RuntimeError('Destination has to be a folder')
 
-    def _download_stream(self, yt: YouTube, stream: Stream, dest_dir: Path) -> Path:
-        ProgressDownload(yt, stream.filesize)
+    def _download_stream(self, yt: YouTube, stream: Stream, dest_dir: Path, cbs: Callbacks | None) -> Path:
+        wrapp = DownloadCallbackWrapper(yt, stream.filesize)
+        if cbs is not None:
+            cbs.on_start(stream.filesize)
+            wrapp.register_on_progress_callback(cbs.on_progress)
+            wrapp.register_on_complete_callback(cbs.on_complete)
         return Path(stream.download(output_path=dest_dir))
 
-    def _download_adaptive(self, yt: YouTube, stream: Stream, streams: StreamQuery, dest_dir: Path) -> Path:
+    def _download_adaptive(self, yt: YouTube, stream: Stream, streams: StreamQuery, dest_dir: Path, cbs: Callbacks | None) -> Path:
         old_video_path = video_path = self._download_stream(
-            yt, stream, dest_dir)
+            yt, stream, dest_dir, cbs)
         dest_path = video_path.with_suffix('.mkv')
         video_path = video_path.with_stem('video')
         shutil.move(old_video_path, video_path)
@@ -71,18 +88,23 @@ class Engine:
         audio_stream = self._get_highest_bitrate_audio(streams)
         assert audio_stream is not None, "Audio stream not found"
         old_audio_path = audio_path = self._download_stream(
-            yt, audio_stream, dest_dir)
+            yt, audio_stream, dest_dir, cbs)
         audio_path = audio_path.with_stem('audio')
         shutil.move(old_audio_path, audio_path)
 
         inp_video = ffmpeg.input(str(video_path))
         inp_audio = ffmpeg.input(str(audio_path))
-        ffmpeg.concat(inp_video, inp_audio, a=1, v=1) \
-            .output(str(dest_path)).run()
+        target = ffmpeg.output(
+            inp_video,
+            inp_audio,
+            str(dest_path),
+            vcodec='copy',
+            acodec='copy'
+        )
+        ffmpeg.run(target, cmd=str(FFMPEG_PATH), quiet=True)
 
         video_path.unlink()
         audio_path.unlink()
-        shutil.move(dest_path, video_path)
         return video_path
 
     def _get_highest_bitrate_audio(self, query: StreamQuery) -> Stream | None:
