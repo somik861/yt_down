@@ -2,7 +2,7 @@ from pytube import Playlist, YouTube, Channel, Stream, StreamQuery  # type: igno
 from pathlib import Path
 from dataclasses import dataclass
 from .util import DownloadCallbackWrapper
-import ffmpeg
+import ffmpeg # type: ignore
 import shutil
 import sys
 from typing import Callable, Generator
@@ -81,17 +81,24 @@ class Engine:
     def video_count(self) -> int:
         return len(self._videos)
 
-    def download(self, cbs: Callbacks | None = None) -> Generator[Path, None, None]:
+    def download(self, *, callbacks: Callbacks | None = None, audio_only: bool = False) -> Generator[Path, None, None]:
         for info in self._videos:
             self._init_directory(info.dest_dir)
             yt = YouTube(info.url)
-            stream = self._get_highest_resolution(yt.streams)
-            assert stream is not None, "Video stream not found"
 
-            if stream.is_progressive:
-                file = self._download_stream(yt, stream, info.dest_dir, cbs)
-            if stream.is_adaptive:
-                file = self._download_adaptive(yt, stream, yt.streams, info.dest_dir, cbs)
+            if audio_only:
+                stream = self._get_highest_bitrate_audio(yt.streams)
+                assert stream is not None, 'Audio stream not found'
+
+                file = self._download_stream(yt, stream, info.dest_dir, callbacks)
+            else:
+                stream = self._get_highest_resolution(yt.streams)
+                assert stream is not None, 'Video stream not found'
+
+                if stream.is_progressive:
+                    file = self._download_stream(yt, stream, info.dest_dir, callbacks)
+                if stream.is_adaptive:
+                    file = self._download_adaptive(yt, stream, yt.streams, info.dest_dir, callbacks)
 
             if info.prefix != '':
                 new_file = file.with_stem(info.prefix + file.stem)
